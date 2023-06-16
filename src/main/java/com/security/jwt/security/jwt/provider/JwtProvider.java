@@ -1,6 +1,6 @@
 package com.security.jwt.security.jwt.provider;
 
-import com.security.jwt.security.util.JwtUtil;
+import com.security.jwt.security.jwt.util.JwtUtil;
 import com.security.jwt.security.jwt.token.JwtAuthenticationToken;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationProvider;

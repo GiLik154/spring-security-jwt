@@ -1,4 +1,4 @@
-package com.security.jwt.security.util;
+package com.security.jwt.security.jwt.util;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

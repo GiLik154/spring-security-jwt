@@ -6,7 +6,7 @@ import com.security.jwt.security.exception.JwtTokenValidationException;
 import com.security.jwt.security.jwt.dto.JwtTokenDto;
 import com.security.jwt.security.jwt.repository.RefreshToken;
 import com.security.jwt.security.jwt.repository.RefreshTokenRepository;
-import com.security.jwt.security.util.JwtUtil;
+import com.security.jwt.security.jwt.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;

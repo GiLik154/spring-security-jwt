@@ -2,7 +2,8 @@
 
 <details>
 <summary>JWT 사용 전의 기본지식 및 설정</summary>
-  ## 0. 개요
+
+## 0. 개요
 
 공부하는데 진짜 오랜 시간이 걸렸다.
 제대로 된 예시가 많지 않았던 탓도 있고, 꼼꼼하게 보고 싶다보니 오래걸린 것 같다.
@@ -63,7 +64,8 @@
 
 <details>
 <summary>JWT 생성 및 파싱 로직</summary>
-  ## 0. 개요
+  
+## 0. 개요
 
 ![JWT_Util](https://github.com/GiLik154/spring-security-jwt/assets/118507239/6ea21b60-f194-4746-ba21-d8a8f3e385ec)
 

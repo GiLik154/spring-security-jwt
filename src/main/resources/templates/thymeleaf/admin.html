@@ -1,9 +1,39 @@
 <!DOCTYPE html>
+<html>
 <head>
     <meta charset="UTF-8">
     <title>Welcome</title>
 </head>
 <body>
-<h1 th:text="${userName + '님 어서오세요. 어드민 사이트입니다.'}"></h1>
+<h1 id="welcome"></h1>
+<a href="/admin">Admin 페이지로 이동</a>
+
+
+<script>
+    // JWT 토큰 가져오기
+    const token = document.cookie.split(';')
+        .map(cookie => cookie.trim())
+        .find(cookie => cookie.startsWith('jwtToken='))
+        .split('=')[1];
+
+    // Info 엔드포인트에 GET 요청 보내기
+    fetch("/info",{
+        method: 'get',
+        headers: {
+            'content-type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        }
+    })
+        .then(response => response.json())
+        .then(json => {
+            // 이름 정보 표시
+            const welcomeElement = document.getElementById('welcome');
+            welcomeElement.textContent = json.name + '님 어서오세요. 어드민사이트입니다.';
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+</script>
+
 </body>
 </html>

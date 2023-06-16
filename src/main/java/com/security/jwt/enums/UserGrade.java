@@ -1,4 +1,4 @@
-package com.security.login.enums;
+package com.security.jwt.enums;
 
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
@@ -18,3 +18,4 @@ public enum UserGrade implements GrantedAuthority {
         return "ROLE_" + name();
     }
 }
+

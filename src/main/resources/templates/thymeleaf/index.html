@@ -1,9 +1,107 @@
 <!DOCTYPE html>
+<html>
 <head>
     <meta charset="UTF-8">
     <title>Welcome</title>
 </head>
 <body>
-<h1 th:text="${userName + '님 어서오세요. 기본사이트입니다.'}"></h1>
+<h1 id="welcome"></h1>
+<a href="/admin">Admin 페이지로 이동</a>
+
+
+<script>
+    const accessTokenCookieName = 'accessToken';
+
+    // JWT 토큰 가져오기
+    const accessToken = getCookie(accessTokenCookieName);
+
+    // Info 엔드포인트에 GET 요청 보내기
+    fetch('/info', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + accessToken
+        }
+    })
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else if (response.status === 403) {
+                return reissueTokenAndFetchInfo();
+            } else {
+                throw new Error('Request failed.');
+            }
+        })
+        .then(json => {
+            // 이름 정보 표시
+            const welcomeElement = document.getElementById('welcome');
+            welcomeElement.textContent = json.name + '님 어서오세요. 기본사이트입니다.' + json.password;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+
+    // 새로운 액세스 토큰 발급 및 Info 엔드포인트 재요청 함수
+    function reissueTokenAndFetchInfo() {
+        const refreshToken = getCookie('refreshToken');
+
+        return fetch('/reissue', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + refreshToken,
+            }
+        })
+            .then(response => {
+                if (response.ok) {
+                    return response.text();
+                } else {
+                    throw new Error('Failed to reissue token.');
+                }
+            })
+            .then(newToken => {
+                const newAccessToken = newToken;
+
+                // 액세스 토큰을 쿠키에 저장
+                setCookie(accessTokenCookieName, newAccessToken);
+
+                console.log(newToken);
+
+                // Info 엔드포인트 재요청
+                return fetch('/info', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + newAccessToken
+                    }
+                });
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    throw new Error('Failed to fetch info after reissuing token.');
+                }
+            });
+    }
+
+    // 쿠키 가져오기
+    function getCookie(cookieName) {
+        const cookieString = document.cookie;
+        const cookies = cookieString.split(';').map(cookie => cookie.trim());
+
+        const targetCookie = cookies.find(cookie => cookie.startsWith(cookieName + '='));
+        if (targetCookie) {
+            return targetCookie.split('=')[1];
+        }
+        return null;
+    }
+
+    // 쿠키 설정하기
+    function setCookie(cookieName, cookieValue) {
+        document.cookie = cookieName + '=' + cookieValue + '; path=/';
+    }
+</script>
+
 </body>
 </html>

@@ -1,20 +1,20 @@
 package com.security.login;
 
-import com.security.login.domain.user.domain.User;
-import com.security.login.domain.user.domain.UserRepository;
-import com.security.login.enums.UserGrade;
+import com.security.jwt.domain.user.domain.User;
+import com.security.jwt.domain.user.domain.UserRepository;
+import com.security.jwt.enums.UserGrade;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @SpringBootTest
-class LoginApplicationTests {
+class UserLoginApplicationTests {
     private final UserRepository userRepository;
     private final PasswordEncoder bCryptPasswordEncoder;
 
     @Autowired
-    LoginApplicationTests(UserRepository userRepository, PasswordEncoder bCryptPasswordEncoder) {
+    UserLoginApplicationTests(UserRepository userRepository, PasswordEncoder bCryptPasswordEncoder) {
         this.userRepository = userRepository;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
     }

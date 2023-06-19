@@ -229,3 +229,260 @@ Filter의 경우에는 서블릿이 저장되어 있든, 저장되어 있지 않
 필터를 잘 사용하면 개발자가 할 일이 많이 줄어든다. 어렵다고 피할 수 있는 것은 아니기에 이 참에 공부하고 이해하면 나중에 많은 도움이 될 것 같다고 생각했다.
   
 </details>
+
+
+<details>
+<summary>JwtProvider 구현</summary>
+  
+  ## 0. 개요
+
+우선 `Provider` 가 무엇인지 알아야 한다.
+스프링 시큐리티의 `AuthenticationProvider` 는 사용자의 인증을 수행하고, 인증된 사용자 객체를 생성하여 스프링 시큐리티에 전달하는 역할을 한다.
+즉, `Provider` 를 어떻게 구현하냐에 따라서 인증하는 방식이 달리잔다고 볼 수 있다.
+인증에 관련된 인터페이스이다보니, 가장 중요한 핵심 로직을 담고 있는 곳이라고 봐도 무방하다.
+
+## 1. 전체적인 로직
+
+```java
+/**
+ * AuthenticationProvider는 인증과 관련된 인터페이스이다.
+ * AuthenticationProvider를 구현해서 사용하여야 스프링 시큐리티의 체인을 이용할 수 있다.
+ */
+@Component
+@RequiredArgsConstructor
+public class JwtProvider implements AuthenticationProvider {
+    private final JwtUtil jwtUtil;
+
+    /**
+     * JwtFilter에서 authentication를 받아오는데, authentication에는 토큰이 저장되어 있다.
+     * 토큰을 사용하여 유저의 아이디와 권한을 가지고 오고
+     * JwtAuthenticationToken에 토큰, 유저, 권한을 담아 보내준다. (123은 다른 것도 담을 수 있기에 예시로 넣어놨다.)
+     *
+     * @param authentication the authentication request object.
+     * @return JwtAuthenticationToken (유저의 정보를 담아서 보내준다.)
+     */
+    @Override
+    public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+        String token = getToken(authentication);
+
+        String username = jwtUtil.extractUsername(token);
+
+        List<GrantedAuthority> authorities = extractUserGrade(token);
+
+        return new JwtAuthenticationToken(token, username, "123", authorities);
+    }
+
+    /**
+     * authentication 에서 토큰을 파싱해온다.
+     *
+     * @param authentication JwtFilter에서 전달받은 인증 객체
+     * @return 파싱된 토큰
+     */
+    private String getToken(Authentication authentication) {
+        JwtAuthenticationToken jwtAuthenticationToken = (JwtAuthenticationToken) authentication;
+
+        return jwtAuthenticationToken.getToken();
+    }
+
+    /**
+     * 유저의 권한을 파싱해서 반환한다.
+     *
+     * @param token 파싱된 토큰
+     * @return 유저의 권한
+     */
+    private List<GrantedAuthority> extractUserGrade(String token) {
+        String userGrade = jwtUtil.extractUserGrade(token);
+
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority(userGrade));
+
+        return authorities;
+    }
+
+    @Override
+    public boolean supports(Class<?> authentication) {
+        return JwtAuthenticationToken.class.isAssignableFrom(authentication);
+    }
+}
+```
+
+딱 보면 알겠지만 엄청 어려운 로직은 없다.
+하나씩 살펴보도록 하겠다.
+
+## 2. JwtAuthenticationToken
+
+```java
+/**
+ * 인증을 위한 Authentication 클래스.
+ */
+@Getter
+public class JwtAuthenticationToken extends AbstractAuthenticationToken {
+    /** 저장되는 토큰 */
+    private final String token;
+
+    /** 판별이 가능한 정보 (여기서는 username을 사용) */
+    private String principal;
+
+    /** 다른 정보도 담을 수 있다는 것을 보여주기 위한 변수 */
+    private String password;
+
+    public JwtAuthenticationToken(String token) {
+        super(null);
+        this.token = token;
+    }
+
+    /** authorities는 유저의 권한을 담아서 보낼 수 있음. */
+    public JwtAuthenticationToken(String token, String principal, String password,
+                                  Collection<? extends GrantedAuthority> authorities) {
+        super(authorities);
+        this.token = token;
+        this.principal = principal;
+        this.password = password;
+    }
+
+    @Override
+    public Object getCredentials() {
+        return null;
+    }
+
+    @Override
+    public Object getPrincipal() {
+        return principal;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        if (!super.equals(o)) return false;
+        JwtAuthenticationToken that = (JwtAuthenticationToken) o;
+        return Objects.equals(token, that.token)
+                && Objects.equals(principal, that.principal)
+                && Objects.equals(password, that.password);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), token, principal, password);
+    }
+}
+```
+
+위는 인증 객체이다.
+스프링 시큐리티를 사용하려면 인증 객체를 이용하여 처리해야한다.
+`JwtAuthenticationToken` 는 `AbstractAuthenticationToken` 를 상속받아서 만들어야 한다.
+
+`private String principal;` 를 구현하여서 구별 가능한 필드를 만들어줘야 한다.
+안그러면 NPE 가 발생한다.
+
+```java
+/** authorities는 유저의 권한을 담아서 보낼 수 있음. */
+    public JwtAuthenticationToken(String token, String principal, String password,
+                                  Collection<? extends GrantedAuthority> authorities) {
+        super(authorities);
+        this.token = token;
+        this.principal = principal;
+        this.password = password;
+    }
+```
+
+위의 `authorities` 를 통해 유저의 인가 설정을 한다.
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/9701eb51-c345-464f-8408-be56166c6768/Untitled.png)
+
+`AbstractAuthenticationToken` 를 상속받으면 위 처럼 인가를 설정할 수 있도록 되어 있다. 
+
+```java
+@ResponseBody
+    @GetMapping("/info")
+    public ResponseEntity<Map<String, Object>> getUserFromToken() {
+        JwtAuthenticationToken jwtAuthenticationToken = (JwtAuthenticationToken) SecurityContextHolder.getContext().getAuthentication();
+
+        Map<String, Object> jsonMap = new HashMap<>();
+        jsonMap.put("name", jwtAuthenticationToken.getPrincipal());
+        jsonMap.put("password", jwtAuthenticationToken.getPassword());
+
+        return ResponseEntity.ok().body(jsonMap);
+    }
+```
+
+컨트롤단에는 위 처럼 SecurityContextHolder에서 꺼내와서 사용할 수 있다. 
+
+## 3. JwtProvider 의 토큰 파싱
+
+```java
+/**
+     * JwtFilter에서 authentication를 받아오는데, authentication에는 토큰이 저장되어 있다.
+     * 토큰을 사용하여 유저의 아이디와 권한을 가지고 오고
+     * JwtAuthenticationToken에 토큰, 유저, 권한을 담아 보내준다.
+     * (123은 다른 것도 담을 수 있기에 예시로 넣어놨다.)
+     *
+     * @param authentication the authentication request object.
+     * @return JwtAuthenticationToken (유저의 정보를 담아서 보내준다.)
+     */
+    @Override
+    public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+        String token = getToken(authentication);
+
+        String username = jwtUtil.extractUsername(token);
+
+        List<GrantedAuthority> authorities = extractUserGrade(token);
+
+        return new JwtAuthenticationToken(token, username, "123", authorities);
+    }
+```
+
+주석으로 달아뒀다.
+우선 *`JwtFilter`* 에서 담아서 넘겨 준 `Authentication` 에서 토큰을 파싱해야한다.
+
+```java
+/**
+     * authentication 에서 토큰을 파싱해온다.
+     *
+     * @param authentication JwtFilter에서 전달받은 인증 객체
+     * @return 파싱된 토큰
+     */
+    private String getToken(Authentication authentication) {
+        JwtAuthenticationToken jwtAuthenticationToken = (JwtAuthenticationToken) authentication;
+
+        return jwtAuthenticationToken.getToken();
+    }
+```
+
+토큰 파싱은 위 처럼 하면 된다. 
+이후 `JwtUtil` 을 통하여서 원하는 정보들을 추출하고
+
+```java
+/**
+     * 유저의 권한을 파싱해서 반환한다.
+     *
+     * @param token 파싱된 토큰
+     * @return 유저의 권한
+     */
+    private List<GrantedAuthority> extractUserGrade(String token) {
+        String userGrade = jwtUtil.extractUserGrade(token);
+
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority(userGrade));
+
+        return authorities;
+    }
+```
+
+유저의 등급도 이런식으로 추출해서 보내주며 된다. 여기서 `SimpleGrantedAuthority` 은 스프링의 권한 객채 중 하나이다. 위와 같이 담아주면 되며, 권한을 여러개 담아주는 것도 가능하다.
+
+```java
+return new JwtAuthenticationToken(token, username, "123", authorities);
+```
+
+마지막으로 `JwtAuthenticationToken` 를 반환해주면 끝난다. 여기서 만약 넘겨줘야 하는 정보가 많다면 DTO를 사용하여 넘겨주는 방식을 고려하는 것이 좋을 것 같다. 하지만 JWT의 특성상 민감한 정보들을 담으면 안된다.
+
+## 4. 결론
+
+Provider에 대해서 공부할 수 있는 시간이었다. 어떠한 역할을 하고, 어떻게 사용해야 되는지에 대해서 이해할 수 있었다. 그리고 얼마나 중요한 로직들을 담고 있는지도 이해할 수 있었다.
+구현이 조금 어려울 수 있으나, 차근차근 해보니 생각보다 엄청 어렵지는 않은 느낌이었다. 
+작성하면서 시큐리티에 대한 이해가 많이 늘었다고 생각한다.
+코드를 작성하면서 아쉬웠던 점은 `JwtAuthenticationToken` 에 아예 DTO로 유저의 정보를 넘기는 방안을 생각해보는게 좋겠다는 생각을 했다.
+물론 너무 많은 정보를 넘기다 실수로 민감한 정보가 포함되면 안되겠지만…..
+  
+  </details>

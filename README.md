@@ -119,7 +119,7 @@ Jwts 내부를 보면 아주 복잡한 과정들을 거치는데,
 
 추출하는 메소드는 간단하다.
 중요하고, 처음 접하는 개념들만 살펴보겠다.
-
+  
 ![Untitled (31)](https://github.com/GiLik154/spring-security-jwt/assets/118507239/8cb2c429-f7c6-4d43-ab21-4a9e7c88dc87)
 
 우선 펑션 기능을 처음 접했다.
@@ -142,4 +142,90 @@ Jwts 내부를 보면 아주 복잡한 과정들을 거치는데,
 작성해야 하는 메소드가 많아서 조금 두려움이 있었지만
 하나씩 하다보니 금방 따라가고 이해할 수 있었다.
 나의 코드가 누군가에게 도움이 되기를 원한다.
+</details>
+
+
+
+<details>
+<summary>JwtFilter을 이용한 검증 및 파싱</summary>
+  
+
+## 0. 개요
+
+이 부분이 제일 어렵고 오래걸렸고 핵심 로직이다.
+사실 사용하지 않아도 Jwt를 사용할 수 는 있지만,
+스프링 시큐리티의 필터체인에 의존하면 많은 것을 편리하게 사용할 수 있다.
+물론 적용하고, 이해하는데 시간이 조금 오래 걸릴 수 는 있다.
+
+스프링 시큐리티의 필터체인에 대해 궁금하면 앞서 설명한 사이트를 참고해주길 바란다.
+[JWT 사용 전의 기본지식 및 설정](https://www.notion.so/JWT-e954d8c8986b49a89f9fac965befdf61?pvs=21) 
+
+## 1. 필터의 전체적인 로직
+
+![JwtFilter](https://github.com/GiLik154/spring-security-jwt/assets/118507239/960548f4-80fc-4e4c-9c97-5d209828390c)
+
+나도 많이 해맸던 부분이라 주석을 모두 달아놨다.
+이 필터는 `OncePerRequestFilter` 를 상속받는다.
+`OncePerRequestFilter` 는 직접 찾아보면 이해가 쉽겠지만, 쉽게 설명하면
+
+우리가 요청을 하면 서블릿을 생성해서 메모리에 저장해둔다.
+이후 똑같은 요청을 보내면 저장해 두었던 서블릿을 꺼내서 요청을 처리한다.
+이런 과정을 통해서 메모리를 절약하고, 속도를 높일 수 있다.
+
+Filter의 경우에는 서블릿이 저장되어 있든, 저장되어 있지 않든 실행이 되고
+`OncePerRequestFilter` 의 경우는 새로운 요청 ( 새로운 서블릿 ) 에만 필터를 적용한다.
+
+즉, `OncePerRequestFilter` 를 사용해야 재요청이 되는 것을 막고, 리소스 낭비를 막을 수 있다.
+
+## 1. 토큰의 파싱
+
+![Untitled (25)](https://github.com/GiLik154/spring-security-jwt/assets/118507239/97e7e9d0-d84b-4363-a6e7-db1cd47a4f6e)
+  
+![Untitled (26)](https://github.com/GiLik154/spring-security-jwt/assets/118507239/f267b749-adfa-45f0-a888-b81a5ef2fbf1)
+
+위의 로직에서 토큰을 가지고 온다.
+회사마다 다를 수 있지만 나는 헤더를 통해서 토큰을 보내주고
+그 토큰을 파싱해서 사용하는 것으로 했다.
+
+`request.getHeader(*AUTHORIZATION*);` 을 통해서 토큰을 받아오고
+
+![Untitled (27)](https://github.com/GiLik154/spring-security-jwt/assets/118507239/227c2bec-f23c-4e7d-96d8-cc7690e0e8d1)
+
+내가 보낸 양식이 맞는지 확인한다.
+만약 이 양식이 지켜지지 않을 경우에는 토큰 파싱을 진행하지 않는다.
+
+이후 `"Bearer "` 를 제거한 토큰을 반환해주는 것으로 토큰을 받아온다. 
+
+## 2. 토큰의 처리
+
+![Untitled (28)](https://github.com/GiLik154/spring-security-jwt/assets/118507239/9ef6c7eb-fa96-44e7-a012-895ae8c6bda2)
+
+`request.getRequestURI();` 을 통해서 현재 접속한 URI를 받아온다.
+내가 원하는 URI에만 실행하기 위해서이다.
+이후 IF문으로 토큰이 존재하는지 점검하고, 내가 원하는 사이트인지 점검한다.
+
+이후 `Authentication` 의 객체에 토큰을 담아서 `jwtProvider.authenticate` 로 전달한다.
+(프로바이더에 관련해서는 다음 장에서 설명하도록 하겠다.)
+
+`jwtProvider.authenticate` 에서 토큰이 사용 가능한지 검증하고, 유저의 정보를 담아서 `Authentication` 로 반환해준다. 
+이후 `SecurityContextHolder` 에 반환된 `Authentication` 를 담아준다.
+
+![Untitled (29)](https://github.com/GiLik154/spring-security-jwt/assets/118507239/b302dfad-9381-4470-a1c7-c7d85cf657c3)
+
+만약 토큰이 만료되었을 경우 403 을 반환하고, 오류 내역을 출력한다.
+403이 반환되면 리프래쉬 토큰을 사용하여 재발급 하는 API로 이동한다.
+
+![Untitled (30)](https://github.com/GiLik154/spring-security-jwt/assets/118507239/7b7a8800-da54-47cf-8e7c-6ef0edf56af5)
+
+이후 다음 체인으로 넘겨준 Jwt Filter의 역할이 끝난다.
+나는 원하는 URI에만 접근을 허용했지만, 반대로 원하지 않는 URI를 설정하고, 필터를 건너뛰는 방식을 사용해도 무난할 것으로 보인다.
+예를 들면 `"/reissue"` 처럼 재발급 하는 API 의 경우 리프래쉬 토큰이 들어오면 오류가 발생할 가능성이 있으니, 미리 방지하는 것이 좋아보인다.
+
+## 3.  결론
+
+필터의 내용이 복잡하고 어려울 수 있으나, 백엔드 개발자를 선택한 이상 이해를 하고 넘어가야 하는 부분이다.
+이러한 부분에 있어서 공부를 할 수 있어서 좋았고
+스프링 시큐리티의 체인 필터에 관해서 공부하고 이해할 수 있는 시간이어서 좋았다.
+필터를 잘 사용하면 개발자가 할 일이 많이 줄어든다. 어렵다고 피할 수 있는 것은 아니기에 이 참에 공부하고 이해하면 나중에 많은 도움이 될 것 같다고 생각했다.
+  
 </details>

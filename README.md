@@ -486,3 +486,589 @@ Provider에 대해서 공부할 수 있는 시간이었다. 어떠한 역할을 
 물론 너무 많은 정보를 넘기다 실수로 민감한 정보가 포함되면 안되겠지만…..
   
   </details>
+
+
+<details>
+<summary>JwtService 및 실제 사용</summary>
+## 0. 개요
+
+이제는 이전에 구현한 코드들로 jwt를 실제로 사용하는 서비스와 컨트롤단을 알아보려고 한다.
+하나씩 살펴보도록 하겠다.
+
+## 1. Service
+
+우선 전체적인 로직이다.
+
+```java
+@Service
+@Transactional
+@RequiredArgsConstructor
+public class JwtService implements UserLogin, AccessTokenRefresher {
+    private static final String BEARER = "Bearer ";
+
+    private final UserRepository userRepository;
+    private final RefreshTokenRepository tokenRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
+
+    /**
+     * 유저 로그인 시 처리되는 서비스.
+     *
+     * @param username 유저의 아이디
+     * @param password 유저의 비밀번호
+     * @return 토큰이 담긴 DTO
+     */
+    @Override
+    public JwtTokenDto login(String username, String password) {
+        User user = userRepository.findUserByUsername(username);
+
+        validPassword(user, password);
+
+        String accessToken = jwtUtil.generateAccessToken(username, user.getUserGrade().getAuthority());
+        String refreshToken = generateRefreshToken(username);
+
+        return new JwtTokenDto(accessToken, refreshToken);
+    }
+
+    /**
+     * 유저의 비밀번호 비교
+     *
+     * @param user     비밀번호를 비교할 유저
+     * @param password 유저의 입력 패스워드
+     * @throws UsernameNotFoundException 유저의 비밀번호가 틀릴 시 전송
+     */
+    private void validPassword(User user, String password) {
+        if (!user.matchPassword(passwordEncoder, password))
+            throw new UsernameNotFoundException("Login Failed");
+    }
+
+    /**
+     * 리프래쉬 토큰을 저장하는 메소드
+     * 리프래쉬 토큰을 캐쉬로만 보내는 것 뿐 아니라 DB에도 전송해야 하기에
+     * 메소드를 따로 빼 두었음.
+     *
+     * @param username 유저의 이름
+     * @return 생성된 RefreshToken
+     */
+    private String generateRefreshToken(String username) {
+        String token = jwtUtil.generateRefreshToken(username);
+
+        RefreshToken refreshToken = tokenRepository.findByUsername(username)
+                .orElseGet(() -> new RefreshToken(username));
+        refreshToken.registerToken(token);
+
+        return token;
+    }
+
+    /**
+     * 토큰이 만료되었을 때 RefreshToken 을 이용해서 새로 발급 받는 메소드
+     *
+     * @param refreshToken 유저의 RefreshToken
+     * @return 새로운 Access Token
+     */
+    @Override
+    public String refresh(String refreshToken) {
+        refreshToken = parsingToken(refreshToken);
+
+        User user = validateRefreshToken(refreshToken);
+
+        return jwtUtil.generateAccessToken(user.getName(), user.getUserGrade().getAuthority());
+    }
+
+    /**
+     * 리프래쉬 토큰을 캐쉬에서 파싱하는 메소드
+     *
+     * @param refreshToken 캐쉬에서 얻어온 RefreshToken
+     * @return 파싱된 RefreshToken
+     * @throws JwtTokenValidationException 전송된 토큰의 양식이 일치하지 않을 시 발생
+     */
+    private String parsingToken(String refreshToken) {
+        if (!StringUtils.hasText(refreshToken) && !refreshToken.startsWith(BEARER))
+            throw new JwtTokenValidationException("The form of the requested token is invalid.");
+
+        return refreshToken.substring(7);
+    }
+
+    /**
+     * 리프래쉬 토큰을 갱신하는 메소드
+     * DB에 저장된 토큰과 일치하는지 확인함.
+     *
+     * @param refreshToken 파싱된 RefreshToken
+     * @return RefreshToken에 담긴 User의 정보
+     * @throws JwtTokenValidationException 전송된 토큰이 검증되지 않으면 발생
+     */
+    private User validateRefreshToken(String refreshToken) {
+        String refreshTokenUsername = jwtUtil.extractUsername(refreshToken);
+
+        if (!tokenRepository.existsByUsernameAndToken(refreshTokenUsername, refreshToken))
+            throw new JwtTokenValidationException("This is not a normal token.");
+
+        return userRepository.findUserByUsername(refreshTokenUsername);
+    }
+}
+```
+
+어려운 로직은 없다.
+다만 위 코드에서 수정해야 하는 부분은, login 부분은 따로 빼는 것이 맞지 않을까? 라는 생각을 한다.
+UserServcie가 따로 있고, 이 곳에 Login이 구현되는 것이 더 객체지향적인 코드라고 생각하지만, 
+지금 내 프로젝트에는 UserService가 따로 없기 때문에 우선 요기다가 구현을 하기로 했다.
+
+## 2. Login
+
+```java
+/**
+     * 유저 로그인 시 처리되는 서비스.
+     *
+     * @param username 유저의 아이디
+     * @param password 유저의 비밀번호
+     * @return 토큰이 담긴 DTO
+     */
+    @Override
+    public JwtTokenDto login(String username, String password) {
+        User user = userRepository.findUserByUsername(username);
+
+        validPassword(user, password);
+
+        String accessToken = jwtUtil.generateAccessToken(username, user.getUserGrade().getAuthority());
+        String refreshToken = generateRefreshToken(username);
+
+        return new JwtTokenDto(accessToken, refreshToken);
+    }
+```
+
+비밀번호를 비교하고, 유저를 가지고 오는 곳은 생략하도록 하겠다.
+
+```java
+/**
+     * 리프래쉬 토큰을 저장하는 메소드
+     * 리프래쉬 토큰을 캐쉬로만 보내는 것 뿐 아니라 DB에도 전송해야 하기에
+     * 메소드를 따로 빼 두었음.
+     *
+     * @param username 유저의 이름
+     * @return 생성된 RefreshToken
+     */
+    private String generateRefreshToken(String username) {
+        String token = jwtUtil.generateRefreshToken(username);
+
+        RefreshToken refreshToken = tokenRepository.findByUsername(username)
+                .orElseGet(() -> new RefreshToken(username));
+        refreshToken.registerToken(token);
+
+        return token;
+    }
+```
+
+리프레쉬 토큰은 db에 저장되어 있는 값이 같은지 없으면 DB에 새로 넣고, 있다면 기존의 refreshToken를 불러와서 사용한다. db에 있는지 비교하는 이유는 억세스 토큰을 마음대로 발행하는 것을 막기 위해서이다.
+
+```java
+
+**// JwtUtil 클래스**
+
+/**
+     * Access Token을 생성하는 메소드
+     * Claims을 통해서 토큰에 담길 정보들을 담는다.
+     * 이 곳에서는 유저의 아이디와 유저의 권한을 담고 있다.
+     *
+     * @param username  유저의 아이디
+     * @param userGrade 유저의 권한
+     * @return 생성된 Access Token
+     */
+    public String generateAccessToken(String username, String userGrade) {
+        Claims claims = Jwts.claims().setSubject(username);
+        claims.put("userGrade", userGrade);
+
+        return createToken(claims, accessTokenExpiration);
+    }
+```
+
+토큰의 생성은
+
+JwtUtil 클래스의 generateAccessToken를 이용하여 생성한다.
+
+`JwtTokenDto`는 별거 없다.
+
+```java
+@Getter
+public class JwtTokenDto {
+    private final String accessToken;
+    private final String refreshToken;
+
+    public JwtTokenDto(String accessToken, String refreshToken) {
+        this.accessToken = accessToken;
+        this.refreshToken = refreshToken;
+    }
+}
+```
+
+이거 전부이다.
+
+컨트롤단은
+
+```java
+@GetMapping("/login")
+    public String login() {
+        return "thymeleaf/login";
+    }
+
+    @ResponseBody
+    @PostMapping("/login")
+    public ResponseEntity<JwtTokenDto> login(String username, String password) {
+        JwtTokenDto dto = userLogin.login(username, password);
+
+        return ResponseEntity.status(HttpStatus.OK).body(dto);
+    }
+```
+
+이렇게 사용하고 있다.
+
+## 3. 재발급
+
+```java
+/**
+     * 토큰이 만료되었을 때 RefreshToken 을 이용해서 새로 발급 받는 메소드
+     *
+     * @param refreshToken 유저의 RefreshToken
+     * @return 새로운 Access Token
+     */
+    @Override
+    public String refresh(String refreshToken) {
+        refreshToken = parsingToken(refreshToken);
+
+        User user = validateRefreshToken(refreshToken);
+
+        return jwtUtil.generateAccessToken(user.getName(), user.getUserGrade().getAuthority());
+    }
+```
+
+위와 같이 사용하고 있다.
+
+```java
+/**
+     * 리프래쉬 토큰을 캐쉬에서 파싱하는 메소드
+     *
+     * @param refreshToken 캐쉬에서 얻어온 RefreshToken
+     * @return 파싱된 RefreshToken
+     * @throws JwtTokenValidationException 전송된 토큰의 양식이 일치하지 않을 시 발생
+     */
+    private String parsingToken(String refreshToken) {
+        if (!StringUtils.hasText(refreshToken) && !refreshToken.startsWith(BEARER))
+            throw new JwtTokenValidationException("The form of the requested token is invalid.");
+
+        return refreshToken.substring(7);
+    }
+```
+
+이 메소드를 통해서 토큰을 파싱하고
+
+```java
+/**
+     * 리프래쉬 토큰을 갱신하는 메소드
+     * DB에 저장된 토큰과 일치하는지 확인함.
+     *
+     * @param refreshToken 파싱된 RefreshToken
+     * @return RefreshToken에 담긴 User의 정보
+     * @throws JwtTokenValidationException 전송된 토큰이 검증되지 않으면 발생
+     */
+    private User validateRefreshToken(String refreshToken) {
+        String refreshTokenUsername = jwtUtil.extractUsername(refreshToken);
+
+        if (!tokenRepository.existsByUsernameAndToken(refreshTokenUsername, refreshToken))
+            throw new JwtTokenValidationException("This is not a normal token.");
+
+        return userRepository.findUserByUsername(refreshTokenUsername);
+    }
+```
+
+이렇게 검증하고 있다.
+
+db에 존재하는지 확인하고, 없으면 익셉션을 발생시킨다.
+그리고 있다면 db에서 `User` 를 찾아서 억세스 토큰을 새로 만들어 반환한다.
+
+컨트롤단은
+
+```java
+@ResponseBody
+    @GetMapping("/reissue")
+    public ResponseEntity<String> reissue(HttpServletRequest request) {
+        String refreshToken = request.getHeader(AUTHORIZATION);
+
+        String newAccessToken = accessTokenRefresher.refresh(refreshToken);
+
+        return ResponseEntity.status(HttpStatus.OK).body(newAccessToken);
+    }
+```
+
+이렇게 사용하고 있다.
+
+## 4. HTML
+
+우선 html에 대해 설명하기 전에, 나는 프론트엔드를 잘 하지 못한다.
+검색해서 꾸역꾸역 쑤셔놓은 코드들이라 내가 제대로 잘 짰는지도 확인을 못하고 있다.
+그래도, 작동은 하니까 우선 어던식으로 작동하는지를 올려본다.
+
+## 4-1 Login Html
+
+```java
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+</head>
+<body>
+<h2>Login</h2>
+
+<form id="loginForm" th:action="@{/login}" method="post">
+    <div>
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username">
+    </div>
+
+    <div>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password">
+    </div>
+
+    <button type="submit">Login</button>
+</form>
+
+<script>
+    document.getElementById('loginForm').addEventListener('submit', function (event) {
+        event.preventDefault(); // 기본 폼 제출 동작 막기
+
+        // 폼 데이터 가져오기
+        const formData = new FormData(this);
+
+        // 서버로 데이터 전송
+        fetch('/login', {
+            method: 'POST',
+            body: formData
+        })
+            .then(function (response) {
+                if (response.ok) {
+                    return response.text();
+                }
+                throw new Error('로그인에 실패했습니다.');
+            })
+            .then(function (tokenDto) {
+                const dto = JSON.parse(tokenDto);
+                const accessToken = dto.accessToken;
+                const refreshToken = dto.refreshToken;
+
+                // 쿠키에 액세스 토큰 저장
+                document.cookie = "accessToken=" + accessToken + "; path=/";
+
+                // 쿠키에 리프레시 토큰 저장
+                document.cookie = "refreshToken=" + refreshToken + "; path=/";
+
+                // '/user'로 이동
+                window.location.href = '/user';
+                });
+            })
+</script>
+</body>
+</html>
+```
+
+우선 로그인을 하면 /login 으로 Post 요청을 보낸다. 
+
+```java
+// 서버로 데이터 전송
+        fetch('/login', {
+            method: 'POST',
+            body: formData
+        })
+            .then(function (response) {
+                if (response.ok) {
+                    return response.text();
+                }
+                throw new Error('로그인에 실패했습니다.');
+            })
+            .then(function (tokenDto) {
+                const dto = JSON.parse(tokenDto);
+                const accessToken = dto.accessToken;
+                const refreshToken = dto.refreshToken;
+
+                // 쿠키에 액세스 토큰 저장
+                document.cookie = "accessToken=" + accessToken + "; path=/";
+
+                // 쿠키에 리프레시 토큰 저장
+                document.cookie = "refreshToken=" + refreshToken + "; path=/";
+
+                // '/user'로 이동
+                window.location.href = '/user';
+                });
+            })
+```
+
+이후 접속에 성공하면 억세스 토큰과 리프레시 토큰을 각 쿠키에 저장하고 /user로 이동한다.
+
+## 4-2 User Html
+
+```java
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Welcome</title>
+</head>
+<body>
+<h1 id="welcome"></h1>
+<a href="/admin">Admin 페이지로 이동</a>
+
+<script>
+    const accessTokenCookieName = 'accessToken';
+
+    // JWT 토큰 가져오기
+    const accessToken = getCookie(accessTokenCookieName);
+
+    // Info 엔드포인트에 GET 요청 보내기
+    fetch('/info', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + accessToken
+        }
+    })
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else if (response.status === 403) {
+                return reissueTokenAndFetchInfo();
+            } else {
+                throw new Error('Request failed.');
+            }
+        })
+        .then(json => {
+            // 이름 정보 표시
+            const welcomeElement = document.getElementById('welcome');
+            welcomeElement.textContent = json.name + '님 어서오세요. 기본사이트입니다.' + json.password;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+
+    // 새로운 액세스 토큰 발급 및 Info 엔드포인트 재요청 함수
+    function reissueTokenAndFetchInfo() {
+        const refreshToken = getCookie('refreshToken');
+
+        return fetch('/reissue', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + refreshToken,
+            }
+        })
+            .then(response => {
+                if (response.ok) {
+                    return response.text();
+                } else {
+                    throw new Error('Failed to reissue token.');
+                }
+            })
+            .then(newToken => {
+                const newAccessToken = newToken;
+
+                // 액세스 토큰을 쿠키에 저장
+                setCookie(accessTokenCookieName, newAccessToken);
+
+                console.log(newToken);
+
+                // Info 엔드포인트 재요청
+                return fetch('/info', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + newAccessToken
+                    }
+                });
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    throw new Error('Failed to fetch info after reissuing token.');
+                }
+            });
+    }
+
+    // 쿠키 가져오기
+    function getCookie(cookieName) {
+        const cookieString = document.cookie;
+        const cookies = cookieString.split(';').map(cookie => cookie.trim());
+
+        const targetCookie = cookies.find(cookie => cookie.startsWith(cookieName + '='));
+        if (targetCookie) {
+            return targetCookie.split('=')[1];
+        }
+        return null;
+    }
+
+    // 쿠키 설정하기
+    function setCookie(cookieName, cookieValue) {
+        document.cookie = cookieName + '=' + cookieValue + '; path=/';
+    }
+</script>
+
+</body>
+</html>
+```
+
+여기는 조금 더 길다. 재발급을 받는 로직이 포함되어 있어서 그렇다.
+만약 /info에서 403이 반환되면 /reissue 로 이동하여 재발급 받는다.
+
+```java
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else if (response.status === 403) {
+                return reissueTokenAndFetchInfo();
+            } else {
+                throw new Error('Request failed.');
+            }
+        })
+```
+
+```java
+return fetch('/reissue', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + refreshToken,
+            }
+        })
+```
+
+이때 헤더에는 리프래쉬 토큰을 보내주게 된다.
+이후 정상적으로 억세스 토큰을 받아오면 다시 쿠키에 저장하고 다시 info를 통해 정보를 얻어온다.
+
+```java
+.then(newToken => {
+                const newAccessToken = newToken;
+
+                // 액세스 토큰을 쿠키에 저장
+                setCookie(accessTokenCookieName, newAccessToken);
+
+                console.log(newToken);
+
+                // Info 엔드포인트 재요청
+                return fetch('/info', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + newAccessToken
+                    }
+                });
+            })
+```
+
+## 5. 결론
+
+길고 길었던 Jwt 공부가 끝났다.
+정보는 정말 많았지만, 원리등이 나오는 곳이 많지 않았다.
+다들 이렇게만 사용하면 된다. 이런 느낌으로 작성되어있는곳이 대부분이었다.
+특히, html에서 어떻게 정보가 처리되는지에 대해 적혀있는곳이 정말 너무 적었다.
+하지만 완성! 했고, 이 방법이 맞는지는 의문이 많이 든다.
+우선 실무에서 더 사용을 해보아야 할 것이라고 생각이 든다.
+
+  </details>

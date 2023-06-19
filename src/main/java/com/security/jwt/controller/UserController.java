@@ -1,8 +1,9 @@
 package com.security.jwt.controller;
 
+import com.security.jwt.security.jwt.service.AccessTokenRefresher;
+import com.security.jwt.security.jwt.service.UserLogin;
 import com.security.jwt.security.jwt.token.JwtAuthenticationToken;
 import com.security.jwt.security.jwt.dto.JwtTokenDto;
-import com.security.jwt.security.jwt.service.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +22,8 @@ import java.util.Map;
 public class UserController {
     private static final String AUTHORIZATION = "Authorization";
 
-    private final JwtService jwtService;
+    private final UserLogin userLogin;
+    private final AccessTokenRefresher accessTokenRefresher;
 
     @GetMapping("/login")
     public String login() {
@@ -31,7 +33,7 @@ public class UserController {
     @ResponseBody
     @PostMapping("/login")
     public ResponseEntity<JwtTokenDto> login(String username, String password) {
-        JwtTokenDto dto = jwtService.login(username, password);
+        JwtTokenDto dto = userLogin.login(username, password);
 
         return ResponseEntity.status(HttpStatus.OK).body(dto);
     }
@@ -53,7 +55,7 @@ public class UserController {
     public ResponseEntity<String> reissue(HttpServletRequest request) {
         String refreshToken = request.getHeader(AUTHORIZATION);
 
-        String newAccessToken = jwtService.refresh(refreshToken);
+        String newAccessToken = accessTokenRefresher.refresh(refreshToken);
 
         return ResponseEntity.status(HttpStatus.OK).body(newAccessToken);
     }

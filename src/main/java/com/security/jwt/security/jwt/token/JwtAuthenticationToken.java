@@ -27,7 +27,8 @@ public class JwtAuthenticationToken extends AbstractAuthenticationToken {
     }
 
     /** authorities는 유저의 권한을 담아서 보낼 수 있음. */
-    public JwtAuthenticationToken(String token, String principal, String password, Collection<? extends GrantedAuthority> authorities) {
+    public JwtAuthenticationToken(String token, String principal, String password,
+                                  Collection<? extends GrantedAuthority> authorities) {
         super(authorities);
         this.token = token;
         this.principal = principal;
@@ -50,7 +51,9 @@ public class JwtAuthenticationToken extends AbstractAuthenticationToken {
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         JwtAuthenticationToken that = (JwtAuthenticationToken) o;
-        return Objects.equals(token, that.token) && Objects.equals(principal, that.principal) && Objects.equals(password, that.password);
+        return Objects.equals(token, that.token)
+                && Objects.equals(principal, that.principal)
+                && Objects.equals(password, that.password);
     }
 
     @Override

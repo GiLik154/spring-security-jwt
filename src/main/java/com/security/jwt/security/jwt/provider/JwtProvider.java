@@ -15,7 +15,7 @@ import java.util.List;
 
 
 /**
- * AuthenticationProvider는 인증과 관련된 클래스이다.
+ * AuthenticationProvider는 인증과 관련된 인터페이스이다.
  * AuthenticationProvider를 구현해서 사용하여야 스프링 시큐리티의 체인을 이용할 수 있다.
  */
 @Component
@@ -26,7 +26,8 @@ public class JwtProvider implements AuthenticationProvider {
     /**
      * JwtFilter에서 authentication를 받아오는데, authentication에는 토큰이 저장되어 있다.
      * 토큰을 사용하여 유저의 아이디와 권한을 가지고 오고
-     * JwtAuthenticationToken에 토큰, 유저, 권한을 담아 보내준다. (123은 다른 것도 담을 수 있기에 예시로 넣어놨다.)
+     * JwtAuthenticationToken에 토큰, 유저, 권한을 담아 보내준다.
+     * (123은 다른 것도 담을 수 있기에 예시로 넣어놨다.)
      *
      * @param authentication the authentication request object.
      * @return JwtAuthenticationToken (유저의 정보를 담아서 보내준다.)
